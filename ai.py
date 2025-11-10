@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests, os
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 app = Flask(__name__)
 
@@ -7,39 +8,50 @@ app = Flask(__name__)
 def home():
     return "✅ Server is running!"
 
-def ddg_answer(query: str) -> str:
+def ddg_answer(q):
     try:
         r = requests.get(
             "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json", "no_html": 1, "no_redirect": 1},
-            timeout=6,
+            params={"q": q, "format": "json", "no_html": 1, "no_redirect": 1},
+            timeout=1.8,  # <= keep fast
         )
         j = r.json() if r.ok else {}
         if j.get("AbstractText"):
             return j["AbstractText"]
-        for item in j.get("RelatedTopics", []):
-            if isinstance(item, dict) and item.get("Text"):
-                return item["Text"]
+        for it in j.get("RelatedTopics", []):
+            if isinstance(it, dict) and it.get("Text"):
+                return it["Text"]
     except Exception:
         pass
     return ""
 
-def wiki_summary(topic: str) -> str:
+def wiki_summary(topic):
     try:
         r = requests.get(
             f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}",
-            timeout=6,
+            timeout=1.8,  # <= keep fast
         )
         j = r.json() if r.ok else {}
         return j.get("extract", "")
     except Exception:
         return ""
 
-def short(text: str, limit: int = 240) -> str:
-    if not text:
-        return ""
-    text = " ".join(text.split())
-    return (text[: limit - 1] + "…") if len(text) > limit else text
+def short(text, limit=240):
+    text = " ".join((text or "").split())
+    return (text[:limit-1] + "…") if len(text) > limit else text
+
+def web_lookup(q):
+    # run both lookups in parallel, stop at the first non-empty
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futs = [ex.submit(ddg_answer, q), ex.submit(wiki_summary, q)]
+        try:
+            for fut in as_completed(futs, timeout=3.6):  # total under 5s
+                ans = fut.result() or ""
+                if ans.strip():
+                    return ans
+        except TimeoutError:
+            pass
+    return ""
 
 @app.route('/webhook', methods=['POST', 'GET'])
 def webhook():
@@ -48,13 +60,17 @@ def webhook():
 
     body = request.get_json(silent=True) or {}
     q = (body.get("queryResult", {}).get("queryText") or "").strip()
+    print("DLGFLW QUESTION:", q)
 
-    if q:
-        ans = ddg_answer(q) or wiki_summary(q) or "I couldn’t find a clear answer right now."
-        return jsonify({"fulfillmentText": short(ans)}), 200
+    ans = web_lookup(q)
+    if not ans:
+        ans = "I couldn’t fetch that quickly. Please try rephrasing or ask another question."
 
-    return jsonify({"fulfillmentText": "Got it!"}), 200
+    reply = short(ans)
+    print("WEBHOOK REPLY:", reply)
+    return jsonify({"fulfillmentText": reply}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
