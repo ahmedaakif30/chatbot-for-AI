@@ -8,12 +8,28 @@ app = Flask(__name__)
 def home():
     return "✅ Server is running!"
 
-# --- helpers ----------------------------------------------------
+# ---------- helpers ----------
 
 def clean(q: str) -> str:
     q = (q or "").strip()
-    q = re.sub(r"[?!.]+$", "", q)            # drop trailing punctuation
+    q = re.sub(r"[?!.]+$", "", q)
     q = re.sub(r"\s+", " ", q)
+    return q
+
+def rewrite_for_topic(q: str) -> str:
+    """Map common questions to tighter topics for better hits."""
+    l = q.lower()
+    if "sea otter" in l or "otters" in l:
+        if "predator" in l or "enemy" in l or "hunt" in l or "eats sea otter" in l:
+            return "Sea otter predators"
+        if "diet" in l or "eat" in l or "food" in l:
+            return "Sea otter diet"
+        if "habitat" in l or "live" in l or "where do" in l:
+            return "Sea otter habitat"
+        if "lifespan" in l or "how long" in l or "live for" in l:
+            return "Sea otter lifespan"
+        if "population" in l or "how many" in l or "count" in l or "left" in l:
+            return "Sea otter population"
     return q
 
 def ddg_answer(q: str) -> tuple[str, str]:
@@ -21,7 +37,7 @@ def ddg_answer(q: str) -> tuple[str, str]:
         r = requests.get(
             "https://api.duckduckgo.com/",
             params={"q": q, "format": "json", "no_html": 1, "no_redirect": 1},
-            timeout=1.6,
+            timeout=1.4,
         )
         if not r.ok:
             return "", ""
@@ -36,19 +52,19 @@ def ddg_answer(q: str) -> tuple[str, str]:
     return "", ""
 
 def wiki_title_search(q: str) -> str:
-    """Find best Wikipedia title for a natural-language question."""
+    """Use Wikipedia page search (better than title-only) and grab the top hit."""
     try:
         r = requests.get(
-            "https://en.wikipedia.org/w/rest.php/v1/search/title",
+            "https://en.wikipedia.org/w/rest.php/v1/search/page",
             params={"q": q, "limit": 1},
-            timeout=1.6,
+            timeout=1.4,
         )
         if not r.ok:
             return ""
         j = r.json()
-        items = j.get("pages") or []
-        if items:
-            return items[0].get("title", "")
+        pages = j.get("pages") or []
+        if pages:
+            return pages[0].get("title", "")
     except Exception:
         pass
     return ""
@@ -57,7 +73,7 @@ def wiki_summary_from_title(title: str) -> str:
     try:
         r = requests.get(
             f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}",
-            timeout=1.6,
+            timeout=1.4,
         )
         if not r.ok:
             return ""
@@ -78,11 +94,11 @@ def short(text: str, limit: int = 240) -> str:
     return (text[: limit - 1] + "…") if len(text) > limit else text
 
 def web_lookup(q: str) -> tuple[str, str]:
-    q = clean(q)
+    q = short(clean(rewrite_for_topic(q)), 120)  # keep focused
     with ThreadPoolExecutor(max_workers=2) as ex:
         futs = [ex.submit(ddg_answer, q), ex.submit(wiki_answer, q)]
         try:
-            for fut in as_completed(futs, timeout=3.2):  # keep total < 5s
+            for fut in as_completed(futs, timeout=3.4):  # total < 5s
                 ans, src = fut.result()
                 if ans and ans.strip():
                     return ans, src
@@ -90,7 +106,7 @@ def web_lookup(q: str) -> tuple[str, str]:
             pass
     return "", ""
 
-# --- webhook ----------------------------------------------------
+# ---------- webhook ----------
 
 @app.route('/webhook', methods=['POST','GET'])
 def webhook():
