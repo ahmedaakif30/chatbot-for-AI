@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import os, re, requests
+import os, re, requests, random
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 app = Flask(__name__)
@@ -21,7 +21,6 @@ def short(text: str, limit: int = 240) -> str:
 def rewrite_for_topic(q: str) -> str:
     """
     Rewrite some common sea-otter questions to tighter topics for better hits.
-    (Keeps total latency < 5s on Dialogflow.)
     """
     l = (q or "").lower()
     if "sea otter" in l or "sea otters" in l or "otters" in l:
@@ -41,6 +40,15 @@ def rewrite_for_topic(q: str) -> str:
 
 # ------------- tiny instant FAQs (zero-latency must-answers) ------------------
 
+HELP_ANSWER = (
+    "If you see a sea otter that looks sick, injured, or in trouble:\n"
+    "• Keep a safe distance and do not touch or move it.\n"
+    "• Keep dogs and people away from the animal.\n"
+    "• Call your local wildlife rescue / marine mammal center or stranding hotline.\n"
+    "• Note the exact location and what the otter was doing so you can tell rescuers.\n"
+    "Never try to feed or keep a wild sea otter as a pet."
+)
+
 PREDATORS_ANSWER = (
     "Main predators of sea otters are great white sharks and orcas (killer whales). "
     "Pups may be taken by bald eagles; on land, occasionally coyotes or bears. "
@@ -55,7 +63,14 @@ DRIVERS_ANSWER = (
 
 def rule_answer(q: str) -> str:
     l = (q or "").lower()
-    # predators
+
+    # Help / rescue questions
+    if "sea otter" in l and any(
+        w in l for w in ["help", "save", "injured", "hurt", "rescue", "what can i do"]
+    ):
+        return HELP_ANSWER
+
+    # Predators
     if any(t in l for t in [
         "main predators of sea otters", "predators of sea otters", "sea otter predators",
         "who eats sea otters", "what eats sea otters", "who preys on sea otters",
@@ -63,7 +78,7 @@ def rule_answer(q: str) -> str:
     ]):
         return PREDATORS_ANSWER
 
-    # drivers/causes of decline
+    # Drivers / causes of decline
     if any(t in l for t in [
         "drivers of decline", "main drivers of decline", "current threats",
         "why are numbers declining", "causes of decline", "endangerment causes",
@@ -138,21 +153,43 @@ def wiki_answer(q: str):
 def web_lookup(q: str) -> tuple[str, str]:
     """
     Run DDG + Wikipedia in parallel and return the first non-empty answer.
-    Keeps total under Dialogflow’s ~5s webhook limit even on free hosting.
     """
     q2 = short(clean(rewrite_for_topic(q)), 120)
     with ThreadPoolExecutor(max_workers=2) as ex:
         futs = [ex.submit(ddg_answer, q2), ex.submit(wiki_answer, q2)]
         try:
-            for fut in as_completed(futs, timeout=3.4):  # total budget < 5s
+            for fut in as_completed(futs, timeout=3.4):
                 ans = fut.result() or ""
                 if ans.strip():
-                    # pick a human-readable source label
                     src = "DuckDuckGo" if fut == futs[0] else "Wikipedia"
                     return ans, src
         except TimeoutError:
             pass
     return "", ""
+
+# ------------- extra filters so it doesn’t answer everything ------------------
+
+def is_sea_otter_question(q: str) -> bool:
+    """Only answer questions that mention sea otters / otters."""
+    l = (q or "").lower()
+    return any(w in l for w in ["sea otter", "sea otters", "otter", "otters"])
+
+SEA_OTTER_ONLY_MESSAGES = [
+    "I’m focused on sea otters right now. Try asking me something about sea otters or their habitat. 🦦",
+    "I can’t answer that one, but I can help with sea otter facts, threats, or how to help them. 🦦",
+    "This bot is only trained for sea otter questions. Please ask me something about sea otters. 🌊🦦",
+]
+
+def seems_relevant(ans: str, q: str) -> bool:
+    """
+    Simple relevance check:
+    - If question mentions otters but answer does not, treat as not relevant.
+    """
+    l_ans = (ans or "").lower()
+    l_q = (q or "").lower()
+    if "otter" in l_q and "otter" not in l_ans:
+        return False
+    return True
 
 # ------------- routes ---------------------------------------------------------
 
@@ -169,19 +206,31 @@ def webhook():
     q = (body.get("queryResult", {}).get("queryText") or "").strip()
     print("DLGFLW QUESTION:", q)
 
-    # 1) instant rule answers (avoid timeouts & guarantee coverage)
+    # 0) Non–sea otter question → gently refuse
+    if not is_sea_otter_question(q):
+        reply = random.choice(SEA_OTTER_ONLY_MESSAGES)
+        print("WEBHOOK REPLY (non-otter):", reply)
+        return jsonify({"fulfillmentText": reply}), 200
+
+    # 1) rule-based instant answers
     rb = rule_answer(q)
     if rb:
         print("WEBHOOK REPLY (rule):", rb)
         return jsonify({"fulfillmentText": rb}), 200
 
-    # 2) otherwise, fast web lookup
+    # 2) web lookup (DuckDuckGo + Wikipedia)
     ans, src = web_lookup(q)
-    if not ans:
-        reply = "I couldn’t fetch that quickly. Please try again."
-        print("WEBHOOK REPLY (empty):", reply)
+
+    # 3) If nothing or seems irrelevant → proper fallback
+    if not ans or not seems_relevant(ans, q):
+        reply = (
+            "I couldn’t find a good answer right now. "
+            "Try rephrasing your question, or ask me another sea otter question. 🦦"
+        )
+        print("WEBHOOK REPLY (fallback):", reply)
         return jsonify({"fulfillmentText": reply}), 200
 
+    # 4) Normal good answer
     reply = short(ans)
     if src:
         reply = f"{reply} (Source: {src})"
