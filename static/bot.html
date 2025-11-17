@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kelp Guardian – Sea Otter Chatbot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(255,255,255,0.7) 0, transparent 50%),
+        radial-gradient(circle at 80% 0%, rgba(255,255,255,0.5) 0, transparent 55%),
+        linear-gradient(180deg, #E7F5FF 0%, #7EC8E3 40%, #3BAFBC 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .chat-panel {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -54%);
+      width: min(920px, 95vw);
+      height: min(620px, 80vh);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.20));
+      backdrop-filter: blur(22px) saturate(170%);
+      border-radius: 32px;
+      border: 1px solid rgba(255,255,255,0.7);
+      box-shadow: 0 24px 55px rgba(15,23,42,0.35);
+      z-index: 5;
+      padding: 20px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      animation: panelRise 650ms ease-out;
+    }
+
+    @keyframes panelRise {
+      from { opacity: 0; transform: translate(-50%, -40%) scale(0.96); }
+      to   { opacity: 1; transform: translate(-50%, -54%) scale(1); }
+    }
+
+    .chat-panel-top {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px;
+    }
+    .chat-panel-title { font-size: 1.5rem; font-weight: 700; color: #083344; }
+    .chat-panel-subtitle { font-size: 0.9rem; opacity: 0.9; }
+    .chat-panel-badge {
+      margin-top: 4px; padding: 0.22rem 0.9rem; border-radius: 999px;
+      background: rgba(8,47,73,0.12); font-size: 0.78rem;
+      width: fit-content;
+    }
+
+    .chat-panel-logo {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #f97316, #0f766e);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 12px 25px rgba(15,23,42,0.45);
+    }
+    .chat-panel-logo-inner {
+      width: 26px; height: 26px; border-radius: 22%;
+      background: #0b3b41;
+    }
+
+    .shortcut-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.35);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,0.6);
+      box-shadow: 0 6px 18px rgba(15,23,42,0.25);
+    }
+
+    .shortcut-btn {
+      padding: 8px 16px;
+      background: rgba(0, 72, 90, 0.25);
+      color: #083344;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: 0.2s;
+      user-select: none;
+    }
+    .shortcut-btn:hover {
+      background: rgba(0, 72, 90, 0.45);
+      transform: translateY(-2px);
+    }
+
+    .chat-panel-body {
+      flex: 1;
+      border-radius: 24px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(148,163,184,0.4);
+      background: radial-gradient(circle at 0% 0%, rgba(15,23,42,0.8), rgba(15,23,42,0.95));
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Chat UI */
+    #chat-window {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #chat-messages {
+      flex: 1;
+      padding: 16px 18px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+    }
+
+    .message {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 16px;
+      margin-bottom: 10px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+    .message.user {
+      margin-left: auto;
+      background: #0f766e;
+      color: #ecfeff;
+      border-bottom-right-radius: 4px;
+    }
+    .message.bot {
+      margin-right: auto;
+      background: rgba(148,163,184,0.22);
+      color: #e5e7eb;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(148,163,184,0.4);
+      background: rgba(15,23,42,0.96);
+      align-items: center;
+    }
+
+    #chat-input {
+      flex: 1;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.7);
+      padding: 8px 14px;
+      background: transparent;
+      color: #e5e7eb;
+      outline: none;
+      font-size: 0.9rem;
+    }
+    #chat-input::placeholder {
+      color: rgba(148,163,184,0.8);
+    }
+
+    #chat-send {
+      border-radius: 999px;
+      border: none;
+      padding: 8px 18px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #f97316;
+      color: #082f49;
+      box-shadow: 0 4px 10px rgba(15,23,42,0.35);
+      transition: 0.15s;
+    }
+    #chat-send:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 7px 16px rgba(15,23,42,0.45);
+    }
+
+    .info-card {
+      position: fixed; left: 50%; bottom: 24px;
+      transform: translateX(-50%);
+      width: min(720px, 92vw);
+      padding: 1rem 1.75rem;
+      border-radius: 999px;
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,0.65);
+      box-shadow: 0 20px 40px rgba(15,23,42,0.30);
+      z-index: 6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="chat-panel">
+    <div class="chat-panel-top">
+      <div>
+        <div class="chat-panel-title">Kelp Guardian</div>
+        <div class="chat-panel-subtitle">Sea otter conservation chatbot</div>
+        <div class="chat-panel-badge">EDUCATIONAL · AWARENESS</div>
+      </div>
+      <div class="chat-panel-logo"><div class="chat-panel-logo-inner"></div></div>
+    </div>
+
+    <!-- Shortcut buttons -->
+    <div class="shortcut-bar">
+      <div class="shortcut-btn" onclick="sendShortcut('fun facts about sea otters')">🌊 Fun Facts</div>
+      <div class="shortcut-btn" onclick="sendShortcut('how can we protect sea otters?')">🛡️ Protection Tips</div>
+      <div class="shortcut-btn" onclick="sendShortcut('what threatens sea otters?')">⚠️ Threats</div>
+    </div>
+
+    <!-- Custom chat instead of iframe -->
+    <div class="chat-panel-body">
+      <div id="chat-window">
+        <div id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" placeholder="Ask something..." />
+          <button id="chat-send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-card">
+    <div>
+      <div style="font-size:1.1rem;font-weight:700;">Kelp Guardian</div>
+      <div style="opacity:0.9;">Sea otter conservation chatbot (Dialogflow backend)</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "http://localhost:5000/chat"; // change to your deployed URL later
+    let sessionId = null;
+
+    const msgsEl = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send");
+
+    function addMessage(who, text) {
+      if (!text) return;
+      const div = document.createElement("div");
+      div.classList.add("message", who === "user" ? "user" : "bot");
+      div.textContent = text;
+      msgsEl.appendChild(div);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+
+    async function sendToBot(text) {
+      if (!text) return;
+
+      addMessage("user", text);
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, session_id: sessionId })
+        });
+
+        const data = await res.json();
+        if (data.session_id) sessionId = data.session_id;
+
+        addMessage("bot", data.reply || "Hmm, no reply received.");
+      } catch (err) {
+        console.error(err);
+        addMessage("bot", "Oops, I couldn’t reach the server.");
+      }
+    }
+
+    // Send on button click
+    sendBtn.addEventListener("click", () => {
+      const text = inputEl.value.trim();
+      inputEl.value = "";
+      sendToBot(text);
+    });
+
+    // Send on Enter key
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const text = inputEl.value.trim();
+        inputEl.value = "";
+        sendToBot(text);
+      }
+    });
+
+    // Called by the top shortcut buttons
+    function sendShortcut(text) {
+      sendToBot(text);
+    }
+
+    // Optional: send a small greeting when page loads
+    window.addEventListener("load", () => {
+      addMessage("bot", "Hi, I’m Kelp Guardian 🌊 Ask me anything about sea otters!");
+    });
+  </script>
+
+</body>
+</html>

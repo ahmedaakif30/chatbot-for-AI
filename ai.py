@@ -1,8 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os, re, requests, random
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from flask import send_from_directory
+
 
 app = Flask(__name__)
+CORS(app)  # allow calls from your bot.html during development
 
 # ------------- small utilities ------------------------------------------------
 
@@ -191,32 +195,23 @@ def seems_relevant(ans: str, q: str) -> bool:
         return False
     return True
 
-# ------------- routes ---------------------------------------------------------
+# ------------- core Q&A logic, shared by webhook + UI ------------------------
 
-@app.route("/")
-def home():
-    return "✅ Server is running!"
-
-@app.route("/webhook", methods=["GET", "POST"])
-def webhook():
-    if request.method == "GET":
-        return jsonify({"status": "Webhook ready"}), 200
-
-    body = request.get_json(silent=True) or {}
-    q = (body.get("queryResult", {}).get("queryText") or "").strip()
-    print("DLGFLW QUESTION:", q)
+def answer_question(q: str) -> str:
+    q = (q or "").strip()
+    print("QUESTION:", q)
 
     # 0) Non–sea otter question → gently refuse
     if not is_sea_otter_question(q):
         reply = random.choice(SEA_OTTER_ONLY_MESSAGES)
-        print("WEBHOOK REPLY (non-otter):", reply)
-        return jsonify({"fulfillmentText": reply}), 200
+        print("REPLY (non-otter):", reply)
+        return reply
 
     # 1) rule-based instant answers
     rb = rule_answer(q)
     if rb:
-        print("WEBHOOK REPLY (rule):", rb)
-        return jsonify({"fulfillmentText": rb}), 200
+        print("REPLY (rule):", rb)
+        return rb
 
     # 2) web lookup (DuckDuckGo + Wikipedia)
     ans, src = web_lookup(q)
@@ -227,16 +222,53 @@ def webhook():
             "I couldn’t find a good answer right now. "
             "Try rephrasing your question, or ask me another sea otter question. 🦦"
         )
-        print("WEBHOOK REPLY (fallback):", reply)
-        return jsonify({"fulfillmentText": reply}), 200
+        print("REPLY (fallback):", reply)
+        return reply
 
     # 4) Normal good answer
     reply = short(ans)
     if src:
         reply = f"{reply} (Source: {src})"
-    print("WEBHOOK REPLY:", reply)
+    print("REPLY:", reply)
+    return reply
+
+# ------------- routes ---------------------------------------------------------
+
+@app.route("/")
+def home():
+    return "✅ Server is running!"
+
+@app.route("/webhook", methods=["GET", "POST"])
+def webhook():
+    """
+    Dialogflow webhook – Dialogflow sends query, we answer with fulfillmentText.
+    """
+    if request.method == "GET":
+        return jsonify({"status": "Webhook ready"}), 200
+
+    body = request.get_json(silent=True) or {}
+    q = (body.get("queryResult", {}).get("queryText") or "").strip()
+    reply = answer_question(q)
     return jsonify({"fulfillmentText": reply}), 200
 
+@app.route("/chat", methods=["POST"])
+def chat():
+    """
+    Endpoint used by your custom UI (bot.html).
+    Expects: { "text": "your question" }
+    Returns: { "reply": "bot answer" }
+    """
+    data = request.get_json(silent=True) or {}
+    q = (data.get("text") or "").strip()
+    if not q:
+        return jsonify({"error": "Missing text"}), 400
+
+    reply = answer_question(q)
+    return jsonify({"reply": reply}), 200
+
+@app.route("/ping")
+def ping():
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
