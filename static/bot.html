@@ -103,7 +103,6 @@
       flex-direction: column;
     }
 
-    /* Chat UI */
     #chat-window {
       display: flex;
       flex-direction: column;
@@ -204,14 +203,12 @@
       <div class="chat-panel-logo"><div class="chat-panel-logo-inner"></div></div>
     </div>
 
-    <!-- Shortcut buttons -->
     <div class="shortcut-bar">
       <div class="shortcut-btn" onclick="sendShortcut('fun facts about sea otters')">🌊 Fun Facts</div>
       <div class="shortcut-btn" onclick="sendShortcut('how can we protect sea otters?')">🛡️ Protection Tips</div>
       <div class="shortcut-btn" onclick="sendShortcut('what threatens sea otters?')">⚠️ Threats</div>
     </div>
 
-    <!-- Custom chat instead of iframe -->
     <div class="chat-panel-body">
       <div id="chat-window">
         <div id="chat-messages"></div>
@@ -226,12 +223,14 @@
   <div class="info-card">
     <div>
       <div style="font-size:1.1rem;font-weight:700;">Kelp Guardian</div>
-      <div style="opacity:0.9;">Sea otter conservation chatbot (Dialogflow backend)</div>
+      <div style="opacity:0.9;">Sea otter conservation chatbot</div>
     </div>
   </div>
 
   <script>
-    const API_URL = "http://localhost:5000/chat"; // change to your deployed URL later
+    /* IMPORTANT: relative URL so it works on Render */
+    const API_URL = "/chat";
+
     let sessionId = null;
 
     const msgsEl = document.getElementById("chat-messages");
@@ -269,14 +268,12 @@
       }
     }
 
-    // Send on button click
     sendBtn.addEventListener("click", () => {
       const text = inputEl.value.trim();
       inputEl.value = "";
       sendToBot(text);
     });
 
-    // Send on Enter key
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         const text = inputEl.value.trim();
@@ -285,12 +282,10 @@
       }
     });
 
-    // Called by the top shortcut buttons
     function sendShortcut(text) {
       sendToBot(text);
     }
 
-    // Optional: send a small greeting when page loads
     window.addEventListener("load", () => {
       addMessage("bot", "Hi, I’m Kelp Guardian 🌊 Ask me anything about sea otters!");
     });
