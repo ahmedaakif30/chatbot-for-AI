@@ -1,12 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os, re, requests, random
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-from flask import send_from_directory
-
 
 app = Flask(__name__)
-CORS(app)  # allow calls from your bot.html during development
+CORS(app)  # allow calls from your bot.html during development / production
 
 # ------------- small utilities ------------------------------------------------
 
@@ -234,15 +232,20 @@ def answer_question(q: str) -> str:
 
 # ------------- routes ---------------------------------------------------------
 
+# Serve your HTML UI
+@app.route("/ui")
+def ui():
+    # "static/bot.html" in your repo
+    return send_from_directory("static", "bot.html")
+
+# Optional: simple text at root
 @app.route("/")
 def home():
-    return "✅ Server is running!"
+    return "✅ Kelp Guardian backend is running. Visit /ui for the chat UI."
 
+# Dialogflow webhook (if you still want to use it)
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    """
-    Dialogflow webhook – Dialogflow sends query, we answer with fulfillmentText.
-    """
     if request.method == "GET":
         return jsonify({"status": "Webhook ready"}), 200
 
@@ -251,13 +254,9 @@ def webhook():
     reply = answer_question(q)
     return jsonify({"fulfillmentText": reply}), 200
 
+# Endpoint used by your custom UI
 @app.route("/chat", methods=["POST"])
 def chat():
-    """
-    Endpoint used by your custom UI (bot.html).
-    Expects: { "text": "your question" }
-    Returns: { "reply": "bot answer" }
-    """
     data = request.get_json(silent=True) or {}
     q = (data.get("text") or "").strip()
     if not q:
